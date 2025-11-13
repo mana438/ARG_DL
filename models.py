@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Sequence
 
 import torch
 import torch.nn as nn
@@ -12,12 +12,16 @@ if TYPE_CHECKING:
     from data_utils import MetadataIndex
 
 
+GLOBAL_PROTEINBERT_DIM = 512
+
+
 @dataclass
 class ModelConfig:
     seq_len: int = 2048
     dropout: float = 0.1
     metadata_embedding_dim: int = 128
-    hidden_layers: List[int] | tuple[int, ...] = (512, 256)
+    hidden_layers: Sequence[int] = (512, 256)
+    use_tf_gpu: bool = False
 
 
 class ProteinBertSequenceEncoder(nn.Module):
@@ -25,16 +29,30 @@ class ProteinBertSequenceEncoder(nn.Module):
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
-        self.embedder = ProteinBertEmbedder(seq_len=config.seq_len)
-        self.projection = nn.Linear(self.embedder.global_dim, 512)
+        self.config = config
+        self.embedder: ProteinBertEmbedder | None = None
+        self.projection = nn.Linear(GLOBAL_PROTEINBERT_DIM, 512)
         self.dropout = nn.Dropout(config.dropout)
 
+    def _ensure_embedder(self) -> None:
+        if self.embedder is None:
+            self.embedder = ProteinBertEmbedder(
+                seq_len=self.config.seq_len,
+                use_tf_gpu=self.config.use_tf_gpu,
+            )
+
     def forward(self, sequences: List[str], device: torch.device) -> torch.Tensor:
+        self._ensure_embedder()
+        assert self.embedder is not None
         with torch.no_grad():
             seq_features = self.embedder.encode(sequences)
-        seq_features = seq_features.to(device)
-        seq_features = self.projection(seq_features)
-        return self.dropout(seq_features)
+        return self._project(seq_features.to(device))
+
+    def project_precomputed(self, embeddings: torch.Tensor, device: torch.device) -> torch.Tensor:
+        return self._project(embeddings.to(device))
+
+    def _project(self, tensor: torch.Tensor) -> torch.Tensor:
+        return self.dropout(self.projection(tensor))
 
 
 class SequenceOnlyModel(nn.Module):
@@ -58,7 +76,11 @@ class SequenceOnlyModel(nn.Module):
 
     def forward(self, batch: dict) -> torch.Tensor:
         device = batch["labels"].device
-        seq_features = self.encoder(batch["sequences"], device)
+        precomputed = batch.get("precomputed_embeddings")
+        if precomputed is not None:
+            seq_features = self.encoder.project_precomputed(precomputed, device)
+        else:
+            seq_features = self.encoder(batch["sequences"], device)
         return self.classifier(seq_features)
 
 
@@ -89,7 +111,11 @@ class MetadataEnhancedModel(nn.Module):
 
     def forward(self, batch: dict) -> torch.Tensor:
         device = batch["labels"].device
-        seq_features = self.encoder(batch["sequences"], device)
+        precomputed = batch.get("precomputed_embeddings")
+        if precomputed is not None:
+            seq_features = self.encoder.project_precomputed(precomputed, device)
+        else:
+            seq_features = self.encoder(batch["sequences"], device)
         drug_embed = self.drug_embedding(batch["drug_ids"])
         tax_embeds = [emb(batch["taxonomy_ids"][:, idx]) for idx, emb in enumerate(self.taxonomy_embeddings)]
         tax_embed = torch.stack(tax_embeds, dim=1).mean(dim=1)

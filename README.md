@@ -9,6 +9,7 @@
 - `models.py` : ProteinBERT 埋め込み + 2 モデル (sequence_only / metadata) の実装
 - `data_utils.py` : データ読み込み、タクソノミー/薬剤エンコーディング、バッチ整形 (シーケンスは生で渡し、TensorFlow 側でトークナイズ)
 - `utils.py` : 学習ループ、メトリクス計算、AMP 対応ユーティリティ
+- `precompute_embeddings.py` : ProteinBERT 埋め込みを事前計算し、CSV に `embedding` 列を追加するスクリプト
 - `requirements.txt` : 必要なパッケージ一覧
 
 ## セットアップ手順
@@ -20,6 +21,21 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 初回実行時に ProteinBERT の学習済み重み (~200MB) を `proteinbert_cache/` に自動ダウンロードします。TensorFlow・PyTorch を併用するため GPU 実行時はメモリに余裕を持ってください。
+
+## ProteinBERT 埋め込みの事前計算（推奨）
+TensorFlow を学習ジョブ中に動かさないようにするため、あらかじめ CSV に 512 次元の埋め込みを追記しておくことを推奨します。
+
+```bash
+python precompute_embeddings.py \
+  --input_csv data/HMDARG-DB/fold_5.train.csv
+
+python precompute_embeddings.py \
+  --input_csv data/HMDARG-DB/fold_5.test.csv
+```
+
+`precompute_embeddings.py` は `embedding` 列に「スペース区切りの 512 個の浮動小数」を書き込みます。学習／評価時にこの列が存在すると、TensorFlow を呼び出さずに PyTorch 側でそのまま使います。追加で CSV を生成したい場合は `--output_csv` を指定してください。
+
+（どうしてもオンザフライで ProteinBERT を走らせたい場合は `train.py --tf_gpu` を指定すれば TensorFlow が GPU を利用します。デフォルトでは CPU のみを使用します。）
 
 ## 学習の実行例
 ### 1. ランダム分割 (fold_5)

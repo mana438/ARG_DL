@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--metadata_dim", type=int, default=128)
     parser.add_argument("--hidden_layers", type=int, nargs="*", default=[512, 256])
     parser.add_argument("--use_amp", action="store_true")
+    parser.add_argument(
+        "--tf_gpu",
+        action="store_true",
+        help="Allow TensorFlow (ProteinBERT) to use GPU when computing embeddings on-the-fly.",
+    )
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save_every_epoch", action="store_true")
@@ -147,6 +152,7 @@ def main() -> None:
         dropout=args.dropout,
         metadata_embedding_dim=args.metadata_dim,
         hidden_layers=tuple(args.hidden_layers),
+        use_tf_gpu=args.tf_gpu,
     )
     model = build_model(args.model_type, metadata, config).to(device)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -141,6 +141,15 @@ def build_metadata_index(frames: Iterable[pd.DataFrame]) -> MetadataIndex:
     return MetadataIndex(mechanism2id=mech2id, drug2id=drug2id, taxonomy2id=taxonomy2id)
 
 
+def parse_embedding_value(value: object) -> Optional[List[float]]:
+    if isinstance(value, str) and value.strip():
+        try:
+            return np.fromstring(value, sep=" ", dtype=np.float32).tolist()
+        except ValueError:
+            return None
+    return None
+
+
 class ProteinSequenceDataset(Dataset):
     def __init__(self, dataframe: pd.DataFrame, metadata: MetadataIndex):
         self.metadata = metadata
@@ -160,6 +169,8 @@ class ProteinSequenceDataset(Dataset):
             "label_id": self.metadata.mechanism_id(str(row.get("mechanism"))),
         }
         sample["arg_label"] = 0 if row.get("mechanism") == "negative" else 1
+        embedding_value = parse_embedding_value(row.get("embedding"))
+        sample["precomputed_embedding"] = embedding_value
         return sample
 
 
@@ -169,6 +180,11 @@ class ProteinBatchCollator:
         taxonomy_ids = torch.tensor([sample["taxonomy_ids"] for sample in batch], dtype=torch.long)
         labels = torch.tensor([sample["label_id"] for sample in batch], dtype=torch.long)
         arg_labels = torch.tensor([sample["arg_label"] for sample in batch], dtype=torch.long)
+        precomputed = [sample.get("precomputed_embedding") for sample in batch]
+        if all(vec is not None for vec in precomputed):
+            embeddings = torch.tensor(precomputed, dtype=torch.float32)
+        else:
+            embeddings = None
         return {
             "sequences": [sample["sequence"] for sample in batch],
             "drug_ids": drug_ids,
@@ -176,4 +192,5 @@ class ProteinBatchCollator:
             "labels": labels,
             "arg_labels": arg_labels,
             "record_ids": [sample["record_id"] for sample in batch],
+            "precomputed_embeddings": embeddings,
         }

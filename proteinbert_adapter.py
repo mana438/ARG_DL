@@ -19,11 +19,13 @@ class ProteinBertEmbedder:
         self,
         seq_len: int = 2048,
         cache_dir: Path | None = None,
+        use_tf_gpu: bool = False,
     ) -> None:
         self.seq_len = seq_len
         self.cache_dir = cache_dir or (Path(__file__).resolve().parent / "proteinbert_cache")
         self.cache_dir.mkdir(exist_ok=True)
         self._tf_predict_lock = threading.Lock()
+        self.use_tf_gpu = use_tf_gpu
         self._load_proteinbert()
 
     def _load_proteinbert(self) -> None:
@@ -32,7 +34,14 @@ class ProteinBertEmbedder:
             sys.path.insert(0, str(repo_path))
 
         from proteinbert import load_pretrained_model  # type: ignore
+        import tensorflow as tf  # type: ignore
         from tensorflow import keras  # type: ignore
+
+        if not self.use_tf_gpu:
+            try:
+                tf.config.set_visible_devices([], "GPU")
+            except Exception:
+                pass
 
         cache_dir = str(self.cache_dir.resolve())
         pretrained_model_generator, input_encoder = load_pretrained_model(
