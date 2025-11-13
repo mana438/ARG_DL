@@ -47,7 +47,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--save_every_epoch", action="store_true")
     return parser.parse_args()
 
 
@@ -181,6 +180,8 @@ def main() -> None:
 
     best_val = -1.0
     output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    history: List[Dict[str, object]] = []
 
     for epoch in range(1, args.epochs + 1):
         train_loss = train_one_epoch(
@@ -201,11 +202,13 @@ def main() -> None:
 
         # 学習ログを JSON 形式でそのまま標準出力に流す（後で jq などで解析しやすくするため）
         log_payload = {
+            "epoch": epoch,
             "train_loss": train_loss,
             "val": val_result.metrics if val_result else {},
             "test": test_result.metrics,
         }
         print(json.dumps(log_payload, indent=2))
+        history.append(log_payload)
 
         # validation が無い場合はテスト指標をベスト判定に使う
         reference_metric = (
@@ -214,11 +217,20 @@ def main() -> None:
         is_best = reference_metric > best_val
         if is_best:
             best_val = reference_metric
-        if args.save_every_epoch or is_best:
-            ckpt_path = output_dir / f"{args.model_type}_epoch{epoch}.pt"
-            save_checkpoint(ckpt_path, model, optimizer, scheduler, metadata, args, epoch, best_val)
+    final_ckpt_path = output_dir / "model_final.pt"
+    save_checkpoint(final_ckpt_path, model, optimizer, scheduler, metadata, args, args.epochs, best_val)
+
+    history_path = output_dir / "results.json"
+    payload = {
+        "history": history,
+        "best_tracked_macro_f1": best_val,
+        "arguments": vars(args),
+    }
+    history_path.write_text(json.dumps(payload, indent=2))
 
     print(f"Best tracked macro F1: {best_val:.4f}")
+    print(f"Saved final checkpoint to {final_ckpt_path}")
+    print(f"Saved training history to {history_path}")
 
 
 if __name__ == "__main__":

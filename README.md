@@ -87,6 +87,7 @@ python train.py \
 - `--val_ratio` : 追加で validation を作成したい場合のみ指定 (デフォルト 0.0 で train/test のみ)
 
 `outputs/` 以下に各エポックのチェックポイント (`*.pt`) とログが保存されます。ベストモデルは検証 Macro-F1 が最大となったエポックで上書きされます。
+各学習 run について、`outputs/<run>/model_final.pt`（最終エポックの重み）と `outputs/<run>/results.json`（各エポックの loss / 精度履歴）が生成されるため、後から数値だけ確認したい場合は `results.json` を参照してください。
 
 ## 評価 (再計算)
 保存済みモデルをテスト CSV に適用するには `test.py` を使用します。
@@ -106,6 +107,7 @@ python test.py \
 - **クラス重み**: ラベル順 (`alteration`, `replacement`, `protection`, `inactivation`, `efflux`, `others`, `negative`) に対し `[10.0, 1.0, 1.0, 1.0, 5.0, 5.0, 1.0]` を固定で適用。
 - **評価指標**: メカニズム 7 クラスの Macro-F1 + 各クラス F1、ARG/非ARG の 2 値 F1 を算出。
 - **データ加工**: 種情報はドメイン〜種 (7 階層) を整数 ID 化。未知カテゴリは `<unk-*>`、薬剤は `<unk-drug>` を用意。
+- **結果ファイル**: `outputs/<run>/results.json` に各エポックの loss と精度を JSON 形式で保存し、`model_final.pt` のみを出力します。
 
 ## 参考
 - 論文: FINAL_thesis_morihira.pdf (リポジトリ同梱)
