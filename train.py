@@ -160,16 +160,17 @@ def main() -> None:
     warmup_steps = int(total_steps * args.warmup_ratio)
     scheduler = create_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
 
-    target_weights = {
-        "antibiotic target alteration": 10.0,
-        "antibiotic target replacement": 1.0,
-        "antibiotic target protection": 1.0,
-        "antibiotic inactivation": 1.0,
-        "antibiotic efflux": 5.0,
-        "others": 5.0,
-        "negative": 1.0,
-    }
-    class_weight_list = [target_weights[label] for label in sorted_label_names(metadata)]
+    label_counts = train_df["mechanism"].value_counts().to_dict()
+    total_labels = sum(label_counts.values())
+    num_labels = metadata.num_labels
+    class_weight_list = []
+    for label in sorted_label_names(metadata):
+        count = label_counts.get(label, 0)
+        if count == 0:
+            weight = 0.0
+        else:
+            weight = total_labels / (num_labels * count)
+        class_weight_list.append(weight)
     class_weights = torch.tensor(class_weight_list, dtype=torch.float32).to(device)
     loss_fn = nn.CrossEntropyLoss(weight=class_weights)
 
