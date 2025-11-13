@@ -20,8 +20,14 @@ class ModelConfig:
     seq_len: int = 2048
     dropout: float = 0.1
     metadata_embedding_dim: int = 128
-    hidden_layers: Sequence[int] = (512, 256)
+    hidden_layers: Sequence[int] = (512, 128, 32)
     use_tf_gpu: bool = False
+
+
+def _resolve_hidden_layers(config: ModelConfig) -> Sequence[int]:
+    if len(config.hidden_layers) == 3:
+        return (512, 128, 32)
+    return config.hidden_layers
 
 
 class ProteinBertSequenceEncoder(nn.Module):
@@ -66,7 +72,8 @@ class SequenceOnlyModel(nn.Module):
     def _build_classifier(self, input_dim: int, num_labels: int, config: ModelConfig) -> nn.Module:
         layers: List[nn.Module] = []
         prev_dim = input_dim
-        for hidden in config.hidden_layers:
+        hidden_dims = _resolve_hidden_layers(config)
+        for hidden in hidden_dims:
             layers.append(nn.Linear(prev_dim, hidden))
             layers.append(nn.GELU())
             layers.append(nn.Dropout(config.dropout))
@@ -101,7 +108,8 @@ class MetadataEnhancedModel(nn.Module):
     def _build_classifier(self, input_dim: int, num_labels: int, config: ModelConfig) -> nn.Module:
         layers: List[nn.Module] = []
         prev_dim = input_dim
-        for hidden in config.hidden_layers:
+        hidden_dims = _resolve_hidden_layers(config)
+        for hidden in hidden_dims:
             layers.append(nn.Linear(prev_dim, hidden))
             layers.append(nn.GELU())
             layers.append(nn.Dropout(config.dropout))
